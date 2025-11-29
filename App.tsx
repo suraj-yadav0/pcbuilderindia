@@ -112,6 +112,7 @@ function App() {
             selectedCategory={activeCategory} 
             onSelect={handleAddPart}
             currentBudget={0}
+            build={build}
         />
       </div>
 

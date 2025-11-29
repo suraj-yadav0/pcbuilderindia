@@ -33,7 +33,7 @@ const VisualBuilder: React.FC<VisualBuilderProps> = ({ build, onRemove }) => {
     return (
       <div 
         key={type}
-        className={`absolute transition-all duration-500 ${coords.class} ${isActive ? 'scale-100 opacity-100' : 'scale-95 opacity-80'}`}
+        className={`absolute transition-all duration-500 ease-out ${coords.class} ${isActive ? 'scale-100 opacity-100 z-50' : 'scale-95 opacity-80 z-10'}`}
         style={{ 
             top: `${coords.y}px`, 
             left: `${coords.x}px`, 
@@ -46,22 +46,29 @@ const VisualBuilder: React.FC<VisualBuilderProps> = ({ build, onRemove }) => {
         <div className={`
           relative w-full h-full flex items-center justify-center border-2 
           ${isActive 
-            ? 'border-cyan-400 bg-cyan-900/40 text-cyan-100 shadow-[0_0_15px_rgba(34,211,238,0.3)]' 
-            : 'border-slate-700 bg-slate-800/30 text-slate-600 border-dashed hover:border-slate-500'}
+            ? 'border-cyan-400 bg-cyan-900/80 text-cyan-100 shadow-[0_0_25px_rgba(34,211,238,0.4)] ring-1 ring-cyan-300/50' 
+            : 'border-slate-700 bg-slate-800/30 text-slate-600 border-dashed hover:border-slate-500 hover:bg-slate-800/50'}
           rounded-lg backdrop-blur-sm cursor-pointer overflow-hidden
           transition-all duration-300
         `}>
           
           {/* Active State Content */}
           {isActive ? (
-             <div className="text-center p-2 w-full animate-in zoom-in fade-in duration-300">
-                <Icon className="w-6 h-6 mx-auto mb-1 text-cyan-400 drop-shadow-md" />
+             <div className="text-center p-2 w-full animate-[zoomIn_0.4s_ease-out]">
+                <Icon className="w-8 h-8 mx-auto mb-2 text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
                 <span className="text-[10px] font-bold leading-tight block truncate w-full px-1">{part.name}</span>
-                <span className="text-[9px] text-cyan-200 bg-cyan-900/50 px-2 py-0.5 rounded-full mt-1 inline-block">
+                <span className="text-[9px] text-cyan-200 bg-cyan-950/60 px-2 py-0.5 rounded-full mt-1 inline-block border border-cyan-500/30">
                     ₹{part.price.toLocaleString()}
                 </span>
+                
                 {/* Tech scanline effect */}
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-400/10 to-transparent translate-y-[-100%] animate-[scan_3s_infinite] pointer-events-none"></div>
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-400/20 to-transparent translate-y-[-100%] animate-[scan_2s_ease-in-out_infinite] pointer-events-none"></div>
+                
+                {/* Corner Accents */}
+                <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-500"></div>
+                <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-cyan-500"></div>
+                <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-cyan-500"></div>
+                <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-500"></div>
              </div>
           ) : (
             /* Empty State Content */
@@ -77,7 +84,6 @@ const VisualBuilder: React.FC<VisualBuilderProps> = ({ build, onRemove }) => {
 
   // Connection Lines Logic
   const renderConnections = useMemo(() => {
-    // Center points of components for drawing lines
     const centers: Partial<Record<PartType, {x: number, y: number}>> = {};
     Object.entries(COMPONENT_COORDS).forEach(([key, coords]) => {
         centers[key as PartType] = {
@@ -88,35 +94,70 @@ const VisualBuilder: React.FC<VisualBuilderProps> = ({ build, onRemove }) => {
 
     const connections = [];
 
+    // Helper for Orthogonal Path (Manhattan routing)
+    const getOrthoPath = (start: {x:number, y:number}, end: {x:number, y:number}) => {
+        // Simple Step Routing: Vertical then Horizontal
+        const midY = (start.y + end.y) / 2;
+        return `M ${start.x} ${start.y} L ${start.x} ${midY} L ${end.x} ${midY} L ${end.x} ${end.y}`;
+    }
+
     // PSU to Motherboard (24-pin)
     if (build[PartType.PSU] && build[PartType.MOTHERBOARD]) {
-        connections.push({ from: centers[PartType.PSU]!, to: centers[PartType.MOTHERBOARD]!, color: '#22d3ee', id: 'psu-mobo' });
+        connections.push({ path: getOrthoPath(centers[PartType.PSU]!, centers[PartType.MOTHERBOARD]!), color: 'url(#grad-power)', id: 'psu-mobo', glow: '#22d3ee' });
     }
     // PSU to GPU (PCIe Power)
     if (build[PartType.PSU] && build[PartType.GPU]) {
-        connections.push({ from: centers[PartType.PSU]!, to: centers[PartType.GPU]!, color: '#facc15', id: 'psu-gpu' });
+        connections.push({ path: getOrthoPath(centers[PartType.PSU]!, centers[PartType.GPU]!), color: 'url(#grad-power-gpu)', id: 'psu-gpu', glow: '#facc15' });
     }
-    // Motherboard to RAM (Data Bus - abstract)
-    if (build[PartType.MOTHERBOARD] && build[PartType.RAM]) {
-        connections.push({ from: centers[PartType.CPU]!, to: centers[PartType.RAM]!, color: '#a78bfa', id: 'cpu-ram' });
+    // CPU to RAM (Data Bus)
+    if (build[PartType.CPU] && build[PartType.RAM]) {
+        connections.push({ path: `M ${centers[PartType.CPU]!.x} ${centers[PartType.CPU]!.y} L ${centers[PartType.RAM]!.x} ${centers[PartType.RAM]!.y}`, color: 'url(#grad-data)', id: 'cpu-ram', glow: '#a78bfa' });
+    }
+    // CPU to GPU (PCIe Lanes)
+    if (build[PartType.CPU] && build[PartType.GPU]) {
+         // Custom path for visual clarity
+         const start = centers[PartType.CPU]!;
+         const end = centers[PartType.GPU]!;
+         const path = `M ${start.x} ${start.y} L ${start.x} ${end.y} L ${end.x} ${end.y}`;
+         connections.push({ path, color: 'url(#grad-data)', id: 'cpu-gpu', glow: '#a78bfa' });
     }
     // Motherboard to Storage (SATA)
     if (build[PartType.MOTHERBOARD] && build[PartType.STORAGE]) {
-        connections.push({ from: { x: centers[PartType.MOTHERBOARD]!.x + 50, y: centers[PartType.MOTHERBOARD]!.y + 100 }, to: centers[PartType.STORAGE]!, color: '#34d399', id: 'mobo-sata' });
+        const start = { x: centers[PartType.MOTHERBOARD]!.x + 60, y: centers[PartType.MOTHERBOARD]!.y + 120 };
+        const end = centers[PartType.STORAGE]!;
+        const path = `M ${start.x} ${start.y} L ${end.x} ${start.y} L ${end.x} ${end.y}`;
+        connections.push({ path, color: '#34d399', id: 'mobo-sata', glow: '#34d399' });
     }
 
     return connections.map(conn => (
-        <g key={conn.id}>
+        <g key={conn.id} className="animate-[fadeIn_0.5s_ease-out]">
+            {/* Glow Effect Layer */}
             <path 
-                d={`M ${conn.from.x} ${conn.from.y} C ${conn.from.x} ${conn.from.y - 50}, ${conn.to.x} ${conn.to.y + 50}, ${conn.to.x} ${conn.to.y}`}
+                d={conn.path}
+                fill="none"
+                stroke={conn.glow}
+                strokeWidth="4"
+                className="opacity-20 blur-sm"
+            />
+            {/* Core Line Layer */}
+            <path 
+                d={conn.path}
                 fill="none"
                 stroke={conn.color}
                 strokeWidth="2"
-                strokeDasharray="10"
-                className="opacity-60 animate-[dash_20s_linear_infinite]"
+                className="opacity-80"
             />
-            <circle cx={conn.from.x} cy={conn.from.y} r="3" fill={conn.color} className="animate-pulse" />
-            <circle cx={conn.to.x} cy={conn.to.y} r="3" fill={conn.color} className="animate-pulse" />
+            {/* Traveling Packet Animation */}
+            <circle r="3" fill="white">
+                <animateMotion 
+                    dur="2s" 
+                    repeatCount="indefinite" 
+                    path={conn.path}
+                    keyPoints="0;1"
+                    keyTimes="0;1"
+                    calcMode="linear"
+                />
+            </circle>
         </g>
     ));
   }, [build]);
@@ -124,14 +165,18 @@ const VisualBuilder: React.FC<VisualBuilderProps> = ({ build, onRemove }) => {
   return (
     <div className="w-full h-full flex items-center justify-center p-8 overflow-hidden relative select-none">
         
-        {/* Style injection for custom keyframes that Tailwind config doesn't cover easily */}
         <style>{`
             @keyframes scan {
                 0% { transform: translateY(-100%); }
                 100% { transform: translateY(200%); }
             }
-            @keyframes dash {
-                to { stroke-dashoffset: -1000; }
+            @keyframes zoomIn {
+                0% { opacity: 0; transform: scale(0.8); }
+                100% { opacity: 1; transform: scale(1); }
+            }
+            @keyframes fadeIn {
+                0% { opacity: 0; }
+                100% { opacity: 1; }
             }
         `}</style>
 
@@ -143,6 +188,20 @@ const VisualBuilder: React.FC<VisualBuilderProps> = ({ build, onRemove }) => {
             
             {/* SVG Connection Layer */}
             <svg className="absolute inset-0 w-full h-full z-20 pointer-events-none">
+                <defs>
+                    <linearGradient id="grad-power" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#0891b2" stopOpacity="0.5" />
+                        <stop offset="100%" stopColor="#22d3ee" stopOpacity="1" />
+                    </linearGradient>
+                    <linearGradient id="grad-power-gpu" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#eab308" stopOpacity="0.5" />
+                        <stop offset="100%" stopColor="#facc15" stopOpacity="1" />
+                    </linearGradient>
+                    <linearGradient id="grad-data" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.5" />
+                        <stop offset="100%" stopColor="#a78bfa" stopOpacity="1" />
+                    </linearGradient>
+                </defs>
                 {renderConnections}
             </svg>
 
@@ -150,6 +209,9 @@ const VisualBuilder: React.FC<VisualBuilderProps> = ({ build, onRemove }) => {
             <div className="absolute top-[20px] left-[20px] w-[380px] h-[440px] bg-slate-800/50 rounded border border-slate-700/50 z-0">
                  <CircuitBoard className="absolute bottom-4 right-4 w-24 h-24 text-slate-700/20" />
                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full border border-slate-700/30"></div>
+                 {/* PCI Lanes Decor */}
+                 <div className="absolute bottom-20 left-10 w-40 h-2 bg-slate-700/30 rounded"></div>
+                 <div className="absolute bottom-16 left-10 w-40 h-2 bg-slate-700/30 rounded"></div>
             </div>
 
             {/* Component Slots */}
@@ -178,8 +240,8 @@ const VisualBuilder: React.FC<VisualBuilderProps> = ({ build, onRemove }) => {
 
         </div>
         
-        <div className="absolute bottom-4 left-0 w-full text-center text-slate-500 text-xs tracking-widest uppercase">
-            Interactive Cabinet View • Click installed part to remove
+        <div className="absolute bottom-4 left-0 w-full text-center text-slate-500 text-xs tracking-widest uppercase animate-pulse">
+            System Live • Connections Active
         </div>
     </div>
   );
